@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Router, HardDrive, Tv, Lightbulb, Lock, Fan, Bell, ShieldAlert, BellRing, Settings, Play, SquareSquare } from 'lucide-react';
+import { Router, HardDrive, Tv, Lightbulb, Lock, Fan, Bell, ShieldAlert, BellRing, Settings, Play, SquareSquare, Loader2, X, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // --- Types & Data ---
@@ -18,11 +18,13 @@ const INITIAL_LOGS: LogEntry[] = [
 ];
 
 export default function App() {
-  const [stage, setStage] = useState<AttackStage>(0);
+  const [stage, setStage] = useState<number>(0);
   const [logs, setLogs] = useState<LogEntry[]>(INITIAL_LOGS);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [networkMode, setNetworkMode] = useState<'conventional' | 'secure'>('conventional');
   const [secureBlocked, setSecureBlocked] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [otaProgress, setOtaProgress] = useState<number>(0);
 
   // Update time
   useEffect(() => {
@@ -43,39 +45,104 @@ export default function App() {
 
   const advanceStage = () => {
     if (networkMode === 'secure') {
-      setSecureBlocked(true);
-      addLog('WARN', 'Unsigned OTA payload detected targeting Smart Bulb_04');
-      setTimeout(() => addLog('INFO', 'SECURE_NET: Payload rejected. Zero Trust micro-segmentation enforced.'), 1000);
-      setTimeout(() => setSecureBlocked(false), 5000);
+      if (stage === 0) {
+        setStage(1);
+        addLog('INFO', 'Incoming OTA update detected at Central Gateway');
+        setSelectedNode('Central Gateway');
+        
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += 20;
+          setOtaProgress(progress);
+          if (progress >= 100) {
+            clearInterval(interval);
+            setTimeout(() => {
+              setStage(2);
+              addLog('INFO', 'Gateway updated. Pushing firmware to edge nodes...');
+              setTimeout(() => {
+                setStage(3);
+                addLog('INFO', 'All nodes updated to firmware v2.5.0');
+                setOtaProgress(0);
+              }, 3000);
+            }, 1000);
+          }
+        }, 1000);
+      } else if (stage === 3) {
+        setStage(4);
+        addLog('WARN', 'Unscheduled OTA payload detected targeting Central Gateway');
+        setSelectedNode('Central Gateway');
+        
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += 20;
+          setOtaProgress(progress);
+          if (progress >= 100) {
+            clearInterval(interval);
+            setTimeout(() => {
+              setStage(5);
+              setSecureBlocked(true);
+              addLog('CRITICAL', 'Signal Signature mismatch. OTA payload rejected.');
+              setOtaProgress(0);
+            }, 1000);
+          }
+        }, 1000);
+      } else if (stage === 5) {
+        setStage(0);
+        setLogs(INITIAL_LOGS);
+        setSelectedNode(null);
+        setSecureBlocked(false);
+      }
       return;
     }
 
     if (stage === 0) {
       setStage(1);
-      addLog('WARN', 'Unsigned OTA payload received at Smart Bulb_04');
-      setTimeout(() => addLog('CRITICAL', 'Smart Bulb_04 compromised (Mirai-variant)'), 1500);
-    } else if (stage === 1) {
-      setStage(2);
-      addLog('CRITICAL', 'Lateral movement detected: .104 -> Gateway -> .22');
-      setTimeout(() => addLog('WARN', 'Implicit trust exploit attempted on Smart Lock'), 1500);
-    } else if (stage === 2) {
-      setStage(3);
-      addLog('FATAL', 'Smart Lock override successful. Perimeter breached.');
-      setTimeout(() => addLog('CRITICAL', 'Pivoting to NAS_VAULT. Data exfiltration initiated.'), 1500);
-    } else {
-      // Reset
+      addLog('INFO', 'Incoming OTA update detected at Central Gateway');
+      setSelectedNode('Central Gateway');
+      
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 25;
+        setOtaProgress(progress);
+        if (progress >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setStage(2);
+            addLog('INFO', 'Gateway updated. Pushing firmware to edge nodes...');
+            setTimeout(() => {
+              setStage(3);
+              addLog('INFO', 'All nodes updated to firmware v2.5.0');
+              setOtaProgress(0);
+            }, 3000);
+          }, 1000);
+        }
+      }, 1000);
+    } else if (stage === 3) {
+      setStage(4);
+      addLog('CRITICAL', 'Smart Bulb_04 compromised via Gateway vulnerability');
+      addLog('CRITICAL', 'Air Control breached. Entry Alarm disabled.');
+      addLog('FATAL', 'Smart Lock unlocked. Password exposed: "5555"');
+      
+      setTimeout(() => {
+        setStage(5);
+        addLog('CRITICAL', 'NAS_VAULT breached. Data exfiltration initiated.');
+      }, 3000);
+    } else if (stage === 5) {
       setStage(0);
       setLogs(INITIAL_LOGS);
+      setSelectedNode(null);
     }
   };
 
   // --- Derived State ---
-  const isBulbHacked = stage >= 1;
-  const isLockTargeted = stage === 2;
-  const isLockBreached = stage >= 3;
-  const isNasTargeted = stage >= 3;
+  const isBulbHacked = networkMode === 'conventional' && stage >= 4;
+  const isAirControlHacked = networkMode === 'conventional' && stage >= 4;
+  const isAlarmDisabled = networkMode === 'conventional' && stage >= 4;
+  const isLockBreached = networkMode === 'conventional' && stage >= 4;
+  const isLockTargeted = networkMode === 'conventional' && stage >= 4;
+  const isNasTargeted = networkMode === 'conventional' && stage >= 5;
 
-  const systemHealth = stage === 0 ? 100 : stage === 1 ? 82 : stage === 2 ? 65 : 40;
+  const systemHealth = networkMode === 'conventional' ? (stage < 4 ? 100 : stage === 4 ? 40 : 10) : 100;
   const healthColor = systemHealth > 80 ? 'bg-primary-container glow-cyan' : systemHealth > 50 ? 'bg-yellow-500' : 'bg-secondary-container glow-red';
 
   return (
@@ -110,9 +177,9 @@ export default function App() {
             <a className="text-[10px] font-headline tracking-widest uppercase text-slate-500 hover:text-primary-container/70 transition-colors" href="#">LOGS</a>
           </div>
           <div className="flex gap-4 items-center ml-4">
-            <button onClick={advanceStage} className="flex items-center gap-2 px-3 py-1 bg-surface-container-high border border-primary-container/30 text-primary-container text-[10px] font-headline tracking-widest uppercase hover:bg-primary-container/10 transition-colors">
-              {networkMode === 'secure' ? <ShieldAlert size={12} /> : stage === 3 ? <SquareSquare size={12} /> : <Play size={12} />}
-              {networkMode === 'secure' ? 'Test Attack' : stage === 0 ? 'Start Demo' : stage === 3 ? 'Reset' : 'Next Stage'}
+            <button onClick={advanceStage} disabled={stage === 1 || stage === 2 || stage === 4} className="flex items-center gap-2 px-3 py-1 bg-surface-container-high border border-primary-container/30 text-primary-container text-[10px] font-headline tracking-widest uppercase hover:bg-primary-container/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {stage === 5 ? <SquareSquare size={12} /> : <Play size={12} />}
+              {stage === 0 ? 'Start Demo' : stage === 5 ? 'Reset' : networkMode === 'secure' && stage === 3 ? 'Simulate Attack' : 'Next Stage'}
             </button>
             <BellRing size={18} className="text-primary-container cursor-pointer" />
             <Settings size={18} className="text-primary-container cursor-pointer" />
@@ -218,16 +285,24 @@ export default function App() {
 
               {/* ATTACK PATHS */}
               {/* From Bulb (Living Room) to Gateway */}
-              {stage >= 2 && (
+              {stage >= 4 && networkMode === 'conventional' && (
                 <path className="attack-path glow-red" d="M625 140 L400 280" stroke="#c31e00" strokeWidth="2" />
               )}
               {/* From Gateway to Door Lock (Entryway) */}
-              {stage >= 2 && (
+              {stage >= 4 && networkMode === 'conventional' && (
                 <path className="attack-path glow-red" d="M400 280 L400 525" stroke="#c31e00" strokeWidth="2" />
               )}
               {/* From Gateway to NAS (Office) */}
-              {stage >= 3 && (
+              {stage >= 5 && networkMode === 'conventional' && (
                 <path className="attack-path glow-red" d="M400 280 L625 425" stroke="#c31e00" strokeWidth="2" />
+              )}
+              {/* From Gateway to Air Control (Bedroom) */}
+              {stage >= 4 && networkMode === 'conventional' && (
+                <path className="attack-path glow-red" d="M400 280 L175 140" stroke="#c31e00" strokeWidth="2" />
+              )}
+              {/* From Gateway to Entry Alarm (Kitchen) */}
+              {stage >= 4 && networkMode === 'conventional' && (
+                <path className="attack-path glow-red" d="M400 280 L175 425" stroke="#c31e00" strokeWidth="2" />
               )}
             </svg>
 
@@ -244,7 +319,9 @@ export default function App() {
               name="Central Gateway" 
               ip="192.168.1.1" 
               x={400} y={280} 
-              status={stage >= 2 ? 'targeted' : 'secure'} 
+              status={(networkMode === 'conventional' && stage >= 4) ? 'targeted' : (networkMode === 'secure' && stage === 4) ? 'targeted' : 'secure'} 
+              isLoading={stage === 1 || (networkMode === 'secure' && stage === 4)}
+              onClick={() => setSelectedNode('Central Gateway')}
             />
 
             {/* SMART BULB (Living Room) */}
@@ -255,6 +332,8 @@ export default function App() {
               x={625} y={140} 
               status={isBulbHacked ? 'breached' : secureBlocked ? 'targeted' : 'secure'} 
               alertText={isBulbHacked ? "HACKED_ALERT" : secureBlocked ? "BLOCKED" : undefined}
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('Smart Bulb_04')}
             />
 
             {/* SMART TV (Living Room) */}
@@ -265,6 +344,8 @@ export default function App() {
               x={700} y={220} 
               status="secure" 
               muted
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('Smart TV')}
             />
 
             {/* NAS STORAGE (Home Office) */}
@@ -274,7 +355,9 @@ export default function App() {
               ip="192.168.1.50" 
               x={625} y={425} 
               status={isNasTargeted ? 'breached' : 'secure'} 
-              alertText="DATA LEAKAGE"
+              alertText={isNasTargeted ? "DATA LEAKAGE" : undefined}
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('NAS_VAULT')}
             />
 
             {/* DOOR LOCK (Entryway) */}
@@ -283,8 +366,10 @@ export default function App() {
               name="Smart Lock" 
               ip="192.168.1.22" 
               x={400} y={525} 
-              status={isLockBreached ? 'breached' : isLockTargeted ? 'targeted' : 'secure'} 
-              alertText={isLockBreached ? "OVERRIDE SUCCESS" : "OVERRIDE ATTEMPT"}
+              status={isLockBreached ? 'breached' : 'secure'} 
+              alertText={isLockBreached ? "UNLOCKED: 5555" : undefined}
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('Smart Lock')}
             />
 
             {/* SMART FAN (Bedroom) */}
@@ -293,8 +378,11 @@ export default function App() {
               name="Air Control" 
               ip="192.168.1.112" 
               x={175} y={140} 
-              status="secure" 
-              muted
+              status={isAirControlHacked ? 'breached' : 'secure'} 
+              alertText={isAirControlHacked ? "COMPROMISED" : undefined}
+              muted={!isAirControlHacked}
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('Air Control')}
             />
 
             {/* ENTRY ALARM (Kitchen) */}
@@ -303,10 +391,156 @@ export default function App() {
               name="Entry Alarm" 
               ip="v1.2.9_SEC" 
               x={175} y={425} 
-              status="secure" 
+              status={isAlarmDisabled ? 'breached' : 'secure'} 
+              alertText={isAlarmDisabled ? "DISABLED" : undefined}
+              isLoading={stage === 2}
+              onClick={() => setSelectedNode('Entry Alarm')}
             />
 
           </div>
+
+          {/* Right Sidebar (Node Details) */}
+          <AnimatePresence>
+            {selectedNode && (
+              <motion.div 
+                initial={{ x: 320, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 320, opacity: 0 }}
+                className="absolute right-0 top-0 bottom-0 w-80 bg-surface-container-lowest border-l border-outline-variant/20 z-40 flex flex-col shadow-2xl"
+              >
+                <div className="p-4 border-b border-outline-variant/20 flex justify-between items-center bg-surface-container-low">
+                  <div className="flex items-center gap-2 text-primary-container">
+                    <Activity size={16} />
+                    <span className="text-[10px] font-headline tracking-widest uppercase">Node Diagnostics</span>
+                  </div>
+                  <button onClick={() => setSelectedNode(null)} className="text-on-surface-variant hover:text-primary-container transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+                
+                <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
+                  <h3 className="text-lg font-mono text-on-surface mb-1">{selectedNode}</h3>
+                  <div className="text-[10px] font-mono text-on-surface-variant mb-6">ID: {Math.random().toString(36).substring(7).toUpperCase()}</div>
+                  
+                  {stage === 1 && selectedNode === 'Central Gateway' && networkMode === 'conventional' && (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-primary-container/5 border border-primary-container/20">
+                        <div className="text-[10px] font-headline text-primary-container tracking-widest uppercase mb-4 flex items-center gap-2">
+                          <Loader2 size={12} className="animate-spin" />
+                          Incoming OTA Update
+                        </div>
+                        <div className="space-y-3 text-[9px] font-mono text-on-surface-variant">
+                          <div className="flex justify-between items-center">
+                            <span>Authenticating Source...</span>
+                            <span className={otaProgress >= 25 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 25 ? 'OK' : 'WAIT'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Comparing hash functions...</span>
+                            <span className={otaProgress >= 50 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 50 ? 'MATCH' : 'WAIT'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Verifying digital signature...</span>
+                            <span className={otaProgress >= 75 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 75 ? 'VALID' : 'WAIT'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Extracting payload...</span>
+                            <span className={otaProgress >= 100 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 100 ? 'DONE' : 'WAIT'}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-5 h-1 w-full bg-surface-container-highest overflow-hidden">
+                          <motion.div 
+                            className="h-full bg-primary-container glow-cyan"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${otaProgress}%` }}
+                            transition={{ ease: "linear", duration: 0.5 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {((stage === 1 || stage === 4) && selectedNode === 'Central Gateway' && networkMode === 'secure') && (
+                    <div className="space-y-4">
+                      <div className={`p-4 bg-primary-container/5 border ${stage === 4 && otaProgress >= 80 ? 'border-secondary-container/50' : 'border-primary-container/20'}`}>
+                        <div className={`text-[10px] font-headline tracking-widest uppercase mb-4 flex items-center gap-2 ${stage === 4 && otaProgress >= 80 ? 'text-secondary-container' : 'text-primary-container'}`}>
+                          {otaProgress < 100 ? <Loader2 size={12} className="animate-spin" /> : (stage === 4 ? <ShieldAlert size={12} /> : <Activity size={12} />)}
+                          {stage === 4 ? 'Suspicious OTA Update' : 'Incoming OTA Update'}
+                        </div>
+                        <div className="space-y-3 text-[9px] font-mono text-on-surface-variant">
+                          <div className="flex justify-between items-center">
+                            <span>Authenticating Source...</span>
+                            <span className={otaProgress >= 20 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 20 ? 'OK' : 'WAIT'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Comparing SHA-256 hashes...</span>
+                            <span className={otaProgress >= 40 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 40 ? 'MATCH' : 'WAIT'}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span>Verifying digital signature...</span>
+                            <span className={otaProgress >= 60 ? 'text-primary-container font-bold' : ''}>{otaProgress >= 60 ? 'VALID' : 'WAIT'}</span>
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-outline-variant/20">
+                            <div className="text-[10px] font-headline text-on-surface-variant tracking-widest uppercase mb-2">Signal Signature Check</div>
+                            <div className="flex justify-between items-center mt-2">
+                              <span>Timing Jitter (Δt &lt; 15ms)...</span>
+                              <span className={otaProgress >= 80 ? (stage === 4 ? 'text-secondary-container font-bold' : 'text-primary-container font-bold') : ''}>
+                                {otaProgress >= 80 ? (stage === 4 ? 'FAIL (45.2ms)' : 'PASS (12.4ms)') : 'WAIT'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center mt-2">
+                              <span>Payload-size Dist...</span>
+                              <span className={otaProgress >= 80 ? (stage === 4 ? 'text-secondary-container font-bold' : 'text-primary-container font-bold') : ''}>
+                                {otaProgress >= 80 ? (stage === 4 ? 'FAIL (μ=1492B)' : 'PASS (μ=1420B)') : 'WAIT'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center mt-2">
+                              <span>Sequence Regularity...</span>
+                              <span className={otaProgress >= 100 ? (stage === 4 ? 'text-secondary-container font-bold' : 'text-primary-container font-bold') : ''}>
+                                {otaProgress >= 100 ? (stage === 4 ? 'FAIL (0.72)' : 'PASS (0.98)') : 'WAIT'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-5 h-1 w-full bg-surface-container-highest overflow-hidden">
+                          <motion.div 
+                            className={`h-full ${stage === 4 && otaProgress >= 80 ? 'bg-secondary-container glow-red' : 'bg-primary-container glow-cyan'}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${otaProgress}%` }}
+                            transition={{ ease: "linear", duration: 0.5 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {stage === 2 && selectedNode !== 'Central Gateway' && (
+                    <div className="p-4 bg-primary-container/5 border border-primary-container/20">
+                      <div className="text-[10px] font-headline text-primary-container tracking-widest uppercase mb-4 flex items-center gap-2">
+                        <Loader2 size={12} className="animate-spin" />
+                        Installing Firmware
+                      </div>
+                      <div className="text-[9px] font-mono text-on-surface-variant">
+                        Receiving update package from Central Gateway...
+                      </div>
+                    </div>
+                  )}
+                  
+                  {stage >= 3 && (
+                    <div className="p-4 bg-surface-container border border-outline-variant/20">
+                      <div className="text-[10px] font-headline text-on-surface-variant tracking-widest uppercase mb-2">
+                        Firmware Status
+                      </div>
+                      <div className="text-[9px] font-mono text-primary-container">
+                        Version: 2.5.0 (Latest)
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Floating HUD Detail */}
           <AnimatePresence>
@@ -321,15 +555,17 @@ export default function App() {
                   {secureBlocked ? 'Security Enforcement' : 'Threat Intelligence'}
                 </div>
                 <div className="text-xs font-mono text-on-surface mb-3 italic">
-                  {secureBlocked && '"Rogue OTA blocked. Zero Trust policy prevented unauthorized payload execution."'}
-                  {stage === 1 && '"Detection of Mirai-variant via rogue OTA on Node .104."'}
-                  {stage === 2 && '"Lateral movement detected. Implicit trust boundary exploited from internal node."'}
-                  {stage === 3 && '"Privilege escalation successful. Multiple critical nodes compromised."'}
+                  {secureBlocked && '"Rogue OTA blocked. Signal Signature mismatch detected."'}
+                  {stage === 1 && '"Incoming OTA update detected. Authenticating source..."'}
+                  {stage === 2 && '"Distributing firmware update to edge nodes..."'}
+                  {stage === 4 && networkMode === 'conventional' && '"Multiple critical nodes compromised via Gateway vulnerability. Implicit trust boundary exploited."'}
+                  {stage === 4 && networkMode === 'secure' && '"Unscheduled OTA payload detected. Performing deep signature analysis..."'}
+                  {stage === 5 && networkMode === 'conventional' && '"NAS_VAULT breached. Data exfiltration in progress."'}
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[9px] font-mono text-on-surface-variant uppercase">Threat Level</span>
                   <span className={`text-xs font-mono font-bold uppercase ${secureBlocked ? 'text-primary-container' : 'text-secondary-container'}`}>
-                    {secureBlocked ? 'Mitigated' : 'Severe'}
+                    {secureBlocked ? 'Mitigated' : (stage === 4 && networkMode === 'secure' ? 'Elevated' : 'Severe')}
                   </span>
                 </div>
               </motion.div>
@@ -388,8 +624,8 @@ function InventoryItem({ icon: Icon, name, status }: { icon: any, name: string, 
   );
 }
 
-function MapNode({ icon: Icon, name, ip, x, y, status, alertText, muted = false }: { 
-  icon: any, name: string, ip: string, x: number, y: number, status: 'secure' | 'targeted' | 'breached', alertText?: string, muted?: boolean 
+function MapNode({ icon: Icon, name, ip, x, y, status, alertText, muted = false, isLoading = false, onClick }: { 
+  icon: any, name: string, ip: string, x: number, y: number, status: 'secure' | 'targeted' | 'breached', alertText?: string, muted?: boolean, isLoading?: boolean, onClick?: () => void 
 }) {
   const isBreached = status === 'breached';
   const isTargeted = status === 'targeted';
@@ -419,9 +655,13 @@ function MapNode({ icon: Icon, name, ip, x, y, status, alertText, muted = false 
     : 'text-primary-container';
 
   return (
-    <div className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2" style={{ left: x, top: y }}>
-      <div className={`w-12 h-12 border flex items-center justify-center transition-colors duration-500 ${containerClass}`}>
-        <Icon size={24} className={`transition-colors duration-500 ${iconClass}`} />
+    <div className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group" style={{ left: x, top: y }} onClick={onClick}>
+      <div className={`w-12 h-12 border flex items-center justify-center transition-colors duration-500 relative ${containerClass}`}>
+        {isLoading ? (
+          <Loader2 size={24} className={`animate-spin transition-colors duration-500 ${iconClass}`} />
+        ) : (
+          <Icon size={24} className={`transition-colors duration-500 ${iconClass}`} />
+        )}
       </div>
       <div className="mt-3 text-center">
         <div className={`text-[10px] font-headline tracking-widest uppercase transition-colors duration-500 ${textClass}`}>
