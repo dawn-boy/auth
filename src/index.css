@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-surface: #10141a;
+  --color-surface-container-lowest: #0a0e14;
+  --color-surface-container-low: #181c22;
+  --color-surface-container: #1c2026;
+  --color-surface-container-high: #262a31;
+  --color-surface-container-highest: #31353c;
+  
+  --color-primary-container: #00f2ff;
+  --color-secondary-container: #c31e00;
+  
+  --color-on-surface: #dfe2eb;
+  --color-on-surface-variant: #b9cacb;
+  --color-outline-variant: #3a494b;
+}
+
+@layer utilities {
+  .glow-cyan {
+    filter: drop-shadow(0 0 4px #00f2ff);
+  }
+  .glow-red {
+    filter: drop-shadow(0 0 6px #c31e00);
+  }
+  .attack-path {
+    stroke-dasharray: 8;
+    animation: dash 1s linear infinite;
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #3a494b;
+    border-radius: 0px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #00f2ff;
+  }
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
